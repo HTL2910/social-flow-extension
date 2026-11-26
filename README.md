@@ -2,7 +2,7 @@
 
 ![Version](https://img.shields.io/badge/version-0.1.2-1b613e)
 ![Manifest](https://img.shields.io/badge/Chrome%20Extension-Manifest%20V3-226b43)
-![Chrome](https://img.shields.io/badge/Chrome%20%2F%20Edge-106%2B-39885a)
+![Chrome](https://img.shields.io/badge/Chrome%20%2F%20Edge-112%2B-39885a)
 ![Runtime](https://img.shields.io/badge/runtime-Pure%20JS%20(Zero%20Build)-405345)
 ![Tests](https://img.shields.io/badge/tests-Node.js%2020%2B-287448)
 
@@ -25,7 +25,7 @@ Extension Chrome/Edge (Manifest V3) viết bằng JavaScript thuần, hỗ trợ
 ```text
 .
 ├── extension/                    # Thư mục extension có thể nạp trực tiếp (Load unpacked)
-│   ├── manifest.json             # Manifest V3 (activeTab, scripting, storage; Chrome 106+)
+│   ├── manifest.json             # Manifest V3 (activeTab, scripting, storage; Chrome 112+)
 │   ├── background.js             # Service Worker: chèn script, hàng đợi tuần tự & lưu trạng thái theo tab
 │   ├── core.js                   # SocialFlowCore: chuẩn hóa cấu hình, Session, chống trùng 5.000 bài, hạn mức
 │   ├── facebook.js               # SocialFlowFacebook: nhận diện khung bài, cụm nút Like, lọc quảng cáo & định danh
@@ -96,9 +96,7 @@ Extension không yêu cầu chạy `npm install` hay máy chủ nền để sử
 
 1. Tạo file `.zip` phát hành từ kho mã nguồn (xem mục [Đóng gói bản phát hành](#đóng-gói-bản-phát-hành)):
    ```powershell
-   New-Item -ItemType Directory -Force test-output | Out-Null
-   $env:PYTHONUTF8 = "1"
-   python scripts/package.py test-output/Social-Flow-Chrome-v0.1.2.zip
+   python scripts/package.py
    ```
 2. Giải nén toàn bộ file `Social-Flow-Chrome-v0.1.2.zip`, ví dụ vào `C:\dev\Social-Flow`.
 3. Mở `chrome://extensions` (Chrome) hoặc `edge://extensions` (Edge) và bật **Developer mode / Chế độ dành cho nhà phát triển**.
@@ -172,13 +170,13 @@ Chỉ dùng 3 quyền tối thiểu: `activeTab`, `scripting`, `storage`. Extens
 
 ### Chạy kiểm thử
 
-Kiểm thử logic lõi không cần cài dependency (chỉ cần Node.js 20+, chạy 4 tệp / 22 kiểm thử):
+Kiểm thử logic lõi không cần cài dependency (chỉ cần Node.js 20+, chạy 4 tệp / 36 kiểm thử):
 
 ```powershell
 node --test tests/core.test.cjs tests/content.test.cjs tests/worker.test.cjs tests/adapter.test.cjs
 ```
 
-Chạy đầy đủ bộ kiểm thử logic + DOM fixture (31 kiểm thử; `tests/facebook-dom.test.cjs` cần `jsdom` trong `devDependencies`):
+Chạy đầy đủ bộ kiểm thử logic + DOM fixture (45 kiểm thử; `tests/facebook-dom.test.cjs` cần `jsdom` trong `devDependencies`):
 
 ```powershell
 npm install
@@ -197,18 +195,25 @@ Xem `TEST-REPORT.md` để biết chính xác phần đã được chạy trong 
 
 ### Đóng gói bản phát hành
 
-Script `scripts/package.py` đóng gói toàn bộ `extension/` ra thư mục gốc của file `.zip` (kèm `HUONG-DAN.md`, `KIEM-THU.md` và mã nguồn đầy đủ trong `development/`), đồng thời tự kiểm tra CRC, `manifest.json`, tham chiếu file trong `popup.html` và kích thước icon (`16x16`, `48x48`, `128x128`).
+Script `scripts/package.py` chỉ dùng thư viện chuẩn Python 3 (không cần cài `Pillow`), đọc UTF-8 tường minh, tự tạo thư mục cha, kiểm tra khớp phiên bản giữa `extension/manifest.json` và `package.json`, tự loại trừ chính tệp đầu ra, đồng thời kiểm tra CRC, `manifest.json`, tham chiếu file trong `popup.html` và kích thước PNG IHDR của icon (`16x16`, `48x48`, `128x128`).
 
-Yêu cầu Python 3 và thư viện `Pillow`:
+Đóng gói bản đầy đủ (gồm `extension/` ở gốc zip + `HUONG-DAN.md`, `KIEM-THU.md` và mã nguồn trong `development/`; mặc định xuất ra `test-output/Social-Flow-Chrome-v0.1.2.zip`):
 
 ```powershell
-pip install pillow
-New-Item -ItemType Directory -Force test-output | Out-Null
-$env:PYTHONUTF8 = "1"
-python scripts/package.py test-output/Social-Flow-Chrome-v0.1.2.zip
+python scripts/package.py
 ```
 
-> Lưu ý: `scripts/package.py` không tự tạo thư mục cha cho đường dẫn đầu ra (nên cần tạo trước `test-output/`), và đọc `manifest.json`/`popup.html` theo mã hóa mặc định của hệ thống (nên cần đặt `$env:PYTHONUTF8 = "1"` trên Windows dùng `cp1252`). Đặt tệp đầu ra trong `test-output/` (đã được loại trừ trong script và nằm trong `.gitignore`) hoặc ngoài thư mục kho mã nguồn để tránh tệp `.zip` tự đóng gói chính nó.
+Đóng gói bản gọn chỉ chứa `extension/` để nộp lên Chrome Web Store (`--store-zip`):
+
+```powershell
+python scripts/package.py --store-zip
+```
+
+Hoặc chỉ định đường dẫn đầu ra tùy ý:
+
+```powershell
+python scripts/package.py test-output/Social-Flow-Chrome-v0.1.2.zip
+```
 
 ---
 

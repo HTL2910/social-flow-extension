@@ -7,10 +7,21 @@
   const facebook = fb.isFacebook(location.hostname);
   let session = new Session(), running = false, steps = 0, generation = 0;
   let timer, cancelWait, panel, note = '', runId = '', revision = 0, diagnostics = null;
-  function status(full = false) {
+  let needFullSync = true;
+  let lifecycle = Promise.resolve();
+  function transition(task) {
+    const next = lifecycle.catch(() => {}).then(task);
+    lifecycle = next;
+    return next;
+  }
+  function status(mode = false) {
+    if (mode === 'delta' && !needFullSync && typeof session.deltaSnapshot === 'function') {
+      const snapshot = session.deltaSnapshot();
+      return {...snapshot, running, steps, note, facebook, runId, revision, diagnostics, origin: location.origin};
+    }
     const snapshot = session.snapshot();
     const state = {...snapshot, running, steps, note, facebook, runId, revision, diagnostics, origin: location.origin};
-    if (!full) { delete state.seen; delete state.tried; delete state.success; }
+    if (!mode) { delete state.seen; delete state.tried; delete state.success; }
     return state;
   }
   function normalNote() {
@@ -38,12 +49,47 @@
     root.querySelector('button').textContent = running ? 'Dừng' : 'Đã dừng';
     root.querySelector('.dot').style.background = running ? '#5ee7a1' : '#81958b';
   }
-  async function persist() {
+  async function sendSave(forceFull) {
     revision++;
+    const mode = forceFull || needFullSync ? 'full' : 'delta';
+    return chrome.runtime.sendMessage({type: 'SF_SAVE', state: status(mode)});
+  }
+  async function persist(forceFull = false, allowHello = false) {
     try {
-      const result = await chrome.runtime.sendMessage({type: 'SF_SAVE', state: status(true)});
-      return result?.ok === true;
-    } catch { return false; }
+      let result = await sendSave(forceFull);
+      if (result?.ok === true) {
+        session.commitDelta?.();
+        needFullSync = false;
+        return true;
+      }
+      if (result?.needHello && allowHello) {
+        const hello = await chrome.runtime.sendMessage({type: 'SF_HELLO'});
+        if (hello?.ok) {
+          needFullSync = true;
+          result = await sendSave(true);
+          if (result?.ok === true) {
+            session.commitDelta?.();
+            needFullSync = false;
+            return true;
+          }
+        }
+      }
+      if (result?.needFull && !forceFull) {
+        needFullSync = true;
+        result = await sendSave(true);
+        if (result?.ok === true) {
+          session.commitDelta?.();
+          needFullSync = false;
+          return true;
+        }
+      }
+      needFullSync = true;
+      if (result?.quotaExceeded) note = 'Đang cuộn · Bộ nhớ phiên đã đầy, tạm bỏ qua lưu/like.';
+      return false;
+    } catch {
+      needFullSync = true;
+      return false;
+    }
   }
   function wait(ms) {
     return new Promise(resolve => {
@@ -85,10 +131,19 @@
           // Persist the attempt before acting, so a reload cannot retry it.
           const saved = await persist();
           if (!running || token !== generation) return;
-          if (!saved) { note = 'Đang cuộn · Không lưu được lượt thử, đã bỏ qua like.'; continue; }
+          if (!saved) {
+            session.unattempted(item.key);
+            if (!note) note = 'Đang cuộn · Không lưu được lượt thử, đã bỏ qua like.';
+            break;
+          }
           // Facebook may recycle DOM nodes while the durable save is pending.
           const fresh = fb.collect(document).find(p => p.key === item.key);
-          if (!fresh?.eligible || fresh.signature !== item.signature || !fresh.button?.isConnected || fb.isLiked(fresh.button) || !inView(fresh.button)) continue;
+          if (!fresh?.eligible || fresh.signature !== item.signature || !fresh.button?.isConnected || fb.isLiked(fresh.button) || !inView(fresh.button)) {
+            session.unattempted(item.key);
+            await persist();
+            if (!running || token !== generation) return;
+            break;
+          }
           fresh.button.click();
           await wait(1300);
           if (!running || token !== generation) return;
@@ -110,18 +165,28 @@
     await persist();
     if (running && token === generation) timer = setTimeout(() => tick(token), session.config.seconds * 1000);
   }
-  async function start(config) {
-    if (running) return status();
-    session = new Session(config); steps = 0; note = ''; diagnostics = null; running = true;
-    runId = crypto.randomUUID(); revision = 0; generation++;
-    render(); await persist();
-    const token = generation;
-    if (running) timer = setTimeout(() => tick(token), session.config.seconds * 1000);
-    return status();
+  function start(config) {
+    return transition(async () => {
+      if (running) return status();
+      session = new Session(config); steps = 0; note = ''; diagnostics = null; running = true;
+      runId = crypto.randomUUID(); revision = 0; needFullSync = true;
+      const token = ++generation;
+      render();
+      const saved = await persist(true, true);
+      if (!running || token !== generation) return status();
+      if (!saved) {
+        if (!note) note = 'Đang cuộn · Chưa lưu được trạng thái khởi tạo, sẽ thử lưu lại.';
+        render();
+      }
+      timer = setTimeout(() => tick(token), session.config.seconds * 1000);
+      return status();
+    });
   }
-  async function stop() {
+  function stop() {
     running = false; generation++; clearTimeout(timer); cancelWait?.(); note = '';
-    render(); await persist(); return status();
+    return transition(async () => {
+      render(); await persist(); return status();
+    });
   }
   const ready = (async () => {
     try {
@@ -130,6 +195,8 @@
       if (saved && (!saved.origin || saved.origin === location.origin)) {
         session = new Session(saved.config, saved); steps = saved.steps || 0;
         running = saved.running === true; runId = saved.runId || crypto.randomUUID(); revision = saved.revision || 0;
+        diagnostics = saved.diagnostics || null;
+        needFullSync = false;
         if (running) { render(); const token = ++generation; timer = setTimeout(() => tick(token), session.config.seconds * 1000); }
       }
     } catch { /* Starting is still available if there is no saved session. */ }

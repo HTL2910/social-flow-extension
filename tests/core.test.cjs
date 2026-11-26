@@ -40,3 +40,31 @@ test('dedupe memory cap disables further likes but retains session',()=>{
  assert.equal(s.consider('overflow'),false);assert.equal(s.memoryFull,true);
  assert.equal(s.seen.size,5000);
 });
+test('compactKey hashes long keys deterministically and preserves legacy hydration',()=>{
+ const C=ctx.SocialFlowCore;
+ const longKey='post:pfbid02abcdefghijklmnopqrstuvwxyz1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+ const compact=C.compactKey(longKey);
+ assert.equal(C.compactKey('post:123'),'post:123');
+ assert.match(compact,/^h:[0-9a-f]{16}$/);
+ assert.equal(C.compactKey(longKey),compact);
+ const s=new C.Session({every:1,maxLikes:2},{seen:[longKey],tried:[longKey],success:[]});
+ assert.equal(s.consider(longKey),false);
+ assert.equal(s.attempts,1);
+ assert.deepEqual([...s.snapshot().seen],[compact]);
+});
+test('unattempted rolls back unconfirmed attempts and deltaSnapshot tracks incremental changes',()=>{
+ const C=ctx.SocialFlowCore;
+ const s=new C.Session({every:1,maxLikes:2});
+ assert.equal(s.consider('post:1'),true);
+ s.attempted('post:1');
+ assert.equal(s.attempts,1);
+ assert.deepEqual(JSON.parse(JSON.stringify(s.deltaSnapshot().delta)),{seen:['post:1'],tried:['post:1'],success:[],removedTried:[]});
+ s.commitDelta();
+ s.unattempted('post:1');
+ assert.equal(s.attempts,0);
+ assert.deepEqual(JSON.parse(JSON.stringify(s.deltaSnapshot().delta)),{seen:[],tried:[],success:[],removedTried:['post:1']});
+ s.commitDelta();
+ assert.equal(s.consider('post:2'),true);
+ s.attempted('post:2'); s.confirmed('post:2'); s.unattempted('post:2');
+ assert.equal(s.attempts,1); assert.equal(s.liked,1);
+});

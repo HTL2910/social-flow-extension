@@ -3,7 +3,7 @@
   "name": "Social Flow — Tự lướt & Like",
   "version": "0.1.2",
   "description": "Tự cuộn website và like bài Facebook theo tần suất. Chuyển tab hoặc nhập nội dung không tự tạm dừng.",
-  "minimum_chrome_version": "106",
+  "minimum_chrome_version": "112",
   "permissions": [
     "activeTab",
     "scripting",
