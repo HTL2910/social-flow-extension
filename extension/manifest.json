@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Social Flow — Tự lướt & Like",
+  "version": "0.1.2",
+  "description": "Tự cuộn website và like bài Facebook theo tần suất. Chuyển tab hoặc nhập nội dung không tự tạm dừng.",
+  "minimum_chrome_version": "106",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Social Flow",
+    "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  }
+}

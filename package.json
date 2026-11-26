@@ -1,0 +1,13 @@
+{
+  "name": "social-flow-extension",
+  "version": "0.1.2",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/core.test.cjs tests/content.test.cjs tests/worker.test.cjs tests/adapter.test.cjs tests/facebook-dom.test.cjs",
+    "test:browser": "node --test tests/browser.test.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1",
+    "jsdom": "26.1.0"
+  }
+}

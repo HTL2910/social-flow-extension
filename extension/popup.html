@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="vi">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Social Flow</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <header><div class="brand-icon" aria-hidden="true">↓</div><div><h1>Social Flow</h1><p>Lướt theo nhịp của bạn</p></div><span class="version">v0.1.2</span></header>
+  <main>
+    <section class="session" aria-label="Trạng thái phiên">
+      <div class="session-top"><span id="badge" class="badge">SẴN SÀNG</span><span id="site">Đang đọc tab…</span></div>
+      <div class="metrics"><div><strong id="viewed">0</strong><span>Bài hợp lệ</span></div><div><strong id="liked">0</strong><span>Đã like</span></div><div><strong id="steps">0</strong><span>Lần cuộn</span></div></div>
+      <p id="status" aria-live="polite">Bật để bắt đầu lướt trên tab này.</p>
+    </section>
+    <details id="diagnostic-panel" hidden><summary>Chẩn đoán nhận diện</summary><p id="diagnostics">Chưa quét.</p></details>
+    <form id="settings">
+      <fieldset id="fields">
+        <legend>NHỊP LƯỚT</legend>
+        <div class="grid"><label>Khoảng nghỉ<div class="input-wrap"><input id="seconds" type="number" min="1" max="120" step="1" value="3" required><span>giây</span></div></label><label>Mỗi lần cuộn<div class="input-wrap"><input id="step" type="number" min="100" max="1000" step="1" value="450" required><span>px</span></div></label></div>
+        <div class="like-heading"><div><label for="autoLike">Tự like trên Facebook</label><small id="like-help">Áp dụng với bài nhận diện được.</small></div><input class="switch" id="autoLike" type="checkbox" checked aria-describedby="like-help"></div>
+        <div class="grid"><label>Cứ mỗi<div class="input-wrap"><input id="every" type="number" min="1" max="1000" value="10" required><span>bài</span></div></label><label>Tối đa mỗi phiên<div class="input-wrap"><input id="maxLikes" type="number" min="0" max="10000" value="5" required><span>like</span></div></label></div>
+        <p class="hint">Đủ giới hạn like vẫn tiếp tục lướt. Số lượt thử được tính vào giới hạn.</p>
+      </fieldset>
+      <div class="controls"><button id="start" class="primary" type="submit">Bắt đầu lướt <span aria-hidden="true">↘</span></button><button id="stop" class="secondary" type="button" disabled>Dừng</button></div>
+    </form>
+    <p id="error" role="alert" hidden></p>
+    <div class="manual"><span aria-hidden="true">●</span> Chỉ dừng khi bạn tắt</div>
+    <p class="footnote">Không tự dừng khi chuyển tab hoặc gõ nội dung. Tab nền có thể chạy chậm do trình duyệt. Đóng tab kết thúc phiên.</p>
+  </main>
+  <footer>Chạy trên tab này · Dữ liệu lưu trong trình duyệt</footer>
+  <script src="core.js"></script><script src="popup.js"></script>
+</body>
+</html>
