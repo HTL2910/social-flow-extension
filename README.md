@@ -205,6 +205,8 @@ Extension không yêu cầu chạy `npm install` hay máy chủ nền để sử
 
 1. Tạo file `.zip` phát hành từ kho mã nguồn (xem mục [Đóng gói bản phát hành](#đóng-gói-bản-phát-hành)):
    ```powershell
+   New-Item -ItemType Directory -Force test-output | Out-Null
+   $env:PYTHONUTF8 = "1"
    python scripts/package.py test-output/Social-Flow-Chrome-v0.1.2.zip
    ```
 2. Giải nén toàn bộ file `Social-Flow-Chrome-v0.1.2.zip`, ví dụ vào `C:\dev\Social-Flow`.
@@ -310,10 +312,12 @@ Yêu cầu Python 3 và thư viện `Pillow`:
 
 ```powershell
 pip install pillow
+New-Item -ItemType Directory -Force test-output | Out-Null
+$env:PYTHONUTF8 = "1"
 python scripts/package.py test-output/Social-Flow-Chrome-v0.1.2.zip
 ```
 
-> Lưu ý: đặt đường dẫn tệp đầu ra trong `test-output/` (đã được loại trừ khi đóng gói và nằm trong `.gitignore`) hoặc ngoài thư mục kho mã nguồn để tránh việc tệp `.zip` tự đóng gói chính nó. Trên Windows không bật UTF-8 mặc định, có thể chạy kèm `PYTHONUTF8=1`.
+> Lưu ý: `scripts/package.py` không tự tạo thư mục cha cho đường dẫn đầu ra (nên cần tạo trước `test-output/`), và đọc `manifest.json`/`popup.html` theo mã hóa mặc định của hệ thống (nên cần đặt `$env:PYTHONUTF8 = "1"` trên Windows dùng `cp1252`). Đặt tệp đầu ra trong `test-output/` (đã được loại trừ trong script và nằm trong `.gitignore`) hoặc ngoài thư mục kho mã nguồn để tránh tệp `.zip` tự đóng gói chính nó.
 
 ---
 
