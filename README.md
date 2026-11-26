@@ -44,6 +44,11 @@ Extension Chrome/Edge (Manifest V3) viết bằng JavaScript thuần, hỗ trợ
 ├── scripts/
 │   └── package.py                # Đóng gói file .zip phát hành và tự kiểm tra manifest, tham chiếu file & icon
 ├── docs/
+│   ├── diagrams/
+│   │   ├── architecture.html             # Sơ đồ kiến trúc hệ thống (HTML + inline SVG)
+│   │   ├── architecture.png              # Ảnh xuất 2x cho README
+│   │   ├── session-tick-lifecycle.html   # Sơ đồ vòng đời phiên & chu kỳ quét/like/cuộn (HTML + inline SVG)
+│   │   └── session-tick-lifecycle.png    # Ảnh xuất 2x cho README
 │   └── superpowers/
 │       ├── specs/2026-10-21-social-flow-design.md
 │       └── plans/2026-10-21-social-flow.md
@@ -58,133 +63,19 @@ Extension Chrome/Edge (Manifest V3) viết bằng JavaScript thuần, hỗ trợ
 
 Extension gồm 3 ngữ cảnh tách biệt theo chuẩn Manifest V3: **Popup UI** (`popup.html` / `popup.js`), **Service Worker** (`background.js`), và **Content Scripts** (`core.js`, `facebook.js`, `content.js`) chỉ được chèn vào tab khi người dùng chủ động bấm bắt đầu hoặc khi tab cùng origin tải lại trong phiên đang chạy.
 
-```mermaid
-flowchart TD
-    subgraph UI["Popup Extension"]
-        POPUP["popup.html / popup.js (Giao diện & polling 1s)"]
-        CORE_UI["core.js (SocialFlowCore.normalizeConfig)"]
-        POPUP --> CORE_UI
-    end
+![Sơ đồ kiến trúc hệ thống Social Flow gồm Popup UI, Service Worker background.js, Chrome APIs/Storage và các content script](docs/diagrams/architecture.png)
 
-    subgraph BG["Service Worker (Manifest V3)"]
-        SW["background.js (serial queue, kiểm soát documentId & revision)"]
-    end
-
-    subgraph API["Chrome Extension APIs"]
-        TABS["activeTab & chrome.tabs (query, get, sendMessage, onUpdated, onRemoved)"]
-        SCRIPT["chrome.scripting.executeScript (core.js, facebook.js, content.js)"]
-        LOCAL["chrome.storage.local (socialFlowConfig)"]
-        SESSION["chrome.storage.session (social-flow:tabId)"]
-    end
-
-    subgraph TAB["Tab trang web đang mở"]
-        CONTENT["content.js (tick loop, window.scrollBy, panel Shadow DOM)"]
-        CORE["core.js (Session: seen/tried/success, giới hạn 5.000 bài)"]
-        FB["facebook.js (collect, actionFor, keyFor, sponsored)"]
-        CONTENT --> CORE
-        CONTENT --> FB
-    end
-
-    POPUP -->|"Đọc / lưu thiết lập"| LOCAL
-    POPUP -->|"chrome.tabs.query (tab hiện tại)"| TABS
-    POPUP -->|"SF_INSPECT / SF_CONTROL (SF_START, SF_STOP)"| SW
-    SW -->|"Kiểm tra URL & sự kiện tab"| TABS
-    SW -->|"Chèn script khi bắt đầu / tải lại cùng origin"| SCRIPT
-    SCRIPT -->|"Khởi chạy trên tab mục tiêu"| CONTENT
-    SW -->|"Đọc / ghi snapshot theo tab"| SESSION
-    SW -->|"SF_STATUS / SF_START / SF_STOP"| CONTENT
-    CONTENT -->|"SF_HELLO / SF_SAVE"| SW
-```
+> Nguồn sơ đồ tương tác (HTML + inline SVG): [`docs/diagrams/architecture.html`](docs/diagrams/architecture.html)
 
 ---
 
 ## Vòng đời phiên chạy & chu kỳ xử lý
 
-### 1. Luồng điều khiển phiên, dừng và khôi phục khi tải lại tab
+Luồng dưới đây tóm tắt vòng đời một phiên chạy từ lúc bấm **Bắt đầu lướt** (`SF_START` → `executeScript` → `SF_HELLO`), khôi phục sau khi tải lại cùng `origin` (`tabs.onUpdated`), cho tới chu kỳ xử lý từng lượt `tick`: lọc bài (`sponsored`, `missing-button`, `already-liked`, `missing-key`, `eligible`), lưu lượt thử `SF_SAVE` và kiểm tra lại DOM trước khi click (tối đa 1 lượt like mỗi tick, chờ 1.300 ms xác nhận qua `isLiked`), luôn tiếp tục cuộn kể cả khi đạt `maxLikes`, và kết thúc khi bấm **Dừng** (`SF_STOP`, có fallback ghi `running = false` vào `chrome.storage.session` nếu tab mất kết nối) hoặc đóng/chuyển origin tab.
 
-```mermaid
-sequenceDiagram
-    actor User as Người dùng
-    participant Popup as popup.js
-    participant SW as background.js (Service Worker)
-    participant Store as chrome.storage.session
-    participant Content as content.js (Tab)
+![Sơ đồ vòng đời phiên và chu kỳ quét bài, xác nhận like, cuộn trang và khôi phục tải lại của Social Flow](docs/diagrams/session-tick-lifecycle.png)
 
-    User->>Popup: Chỉnh cấu hình và bấm Bắt đầu lướt
-    Popup->>SW: SF_CONTROL (SF_START, tabId, config)
-    SW->>Content: chrome.scripting.executeScript (core.js, facebook.js, content.js)
-    Content->>SW: SF_HELLO (đăng ký documentId)
-    SW->>Store: Lưu documentId và kiểm tra state cùng origin
-    SW-->>Content: {ok: true, state}
-    SW->>Content: SF_START (config)
-    Content->>SW: SF_SAVE (runId mới, revision = 1, running = true)
-    SW->>Store: Ghi social-flow:tabId
-    SW-->>Popup: {ok: true, state}
-
-    loop Mỗi 1 giây khi popup đang mở
-        Popup->>SW: SF_INSPECT (tabId)
-        SW->>Content: SF_STATUS (fallback đọc storage.session nếu mất kết nối)
-        Content-->>SW: Snapshot gọn (ẩn danh sách seen, tried, success)
-        SW-->>Popup: {ok: true, state}
-    end
-
-    alt Tải lại trang cùng origin khi đang chạy
-        SW->>Store: tabs.onUpdated (complete) đọc social-flow:tabId
-        SW->>Content: Chèn lại script nếu quyền activeTab còn hiệu lực
-        Content->>SW: SF_HELLO
-        SW-->>Content: {ok: true, state} để tiếp tục phiên
-    else Chuyển sang website khác origin hoặc đóng tab
-        SW->>Store: Xóa social-flow:tabId
-    end
-
-    User->>Popup: Bấm Dừng (hoặc bấm Dừng trên panel trong trang)
-    Popup->>SW: SF_CONTROL (SF_STOP)
-    SW->>Content: SF_STOP (fallback ghi running = false nếu tab mất kết nối)
-    Content->>SW: SF_SAVE (running = false)
-```
-
-### 2. Luồng xử lý từng lượt (`tick`) — lọc bài, xác nhận like và tiếp tục cuộn
-
-```mermaid
-flowchart TD
-    TICK_START(["Đến hạn timer (seconds * 1000)"]) --> CHECK_FB{"Facebook desktop và bật Tự like?"}
-    CHECK_FB -->|"Không"| SCROLL
-    CHECK_FB -->|"Có"| COLLECT["facebook.js: collect(document) — duyệt các khung bài & cập nhật diagnostics"]
-    COLLECT --> FILTER{"Phân loại từng khung bài (FeedUnit / article)"}
-
-    FILTER -->|"Nhãn Được tài trợ / Sponsored"| SKIP_AD["Bỏ qua (reason: sponsored)"]
-    FILTER -->|"Không rõ cụm nút Like + Comment/Share"| SKIP_BTN["Bỏ qua (reason: missing-button)"]
-    FILTER -->|"Đã thích / đã bày tỏ cảm xúc"| SKIP_LIKED["Bỏ qua (reason: already-liked)"]
-    FILTER -->|"Không có permalink hoặc dấu vân tay rõ"| SKIP_KEY["Bỏ qua (reason: missing-key)"]
-    FILTER -->|"Đủ điều kiện (reason: eligible)"| VIEW{"Nút Like nằm trong viewport (inView)?"}
-
-    VIEW -->|"Chưa vào màn hình"| SCROLL
-    VIEW -->|"Có"| CONSIDER{"core.js: Session.consider(key)"}
-    CONSIDER -->|"Trùng bài / đạt 5.000 bài / đủ maxLikes / chưa tới bội số every"| SCROLL
-    CONSIDER -->|"Đạt bài thứ N và còn hạn mức"| ATTEMPT["Session.attempted(key) — gửi SF_SAVE trước khi click"]
-
-    ATTEMPT --> SAVE_OK{"Lưu SF_SAVE thành công?"}
-    SAVE_OK -->|"Không"| SCROLL
-    SAVE_OK -->|"Có"| RECHECK{"Quét lại DOM: cùng key, cùng signature, chưa like, còn inView?"}
-    RECHECK -->|"DOM đã đổi / tái sử dụng"| SCROLL
-    RECHECK -->|"Khớp"| CLICK["Click nút Like (tối đa 1 lượt / tick) & chờ 1300ms"]
-
-    CLICK --> CONFIRM{"facebook.js: isLiked(button) đã xác nhận?"}
-    CONFIRM -->|"Có"| CONFIRMED["Session.confirmed(key) — tăng Đã like"]
-    CONFIRM -->|"Chưa"| UNCONFIRMED["Ghi chú chưa xác nhận (không thử lại bài này)"]
-
-    CONFIRMED --> SCROLL
-    UNCONFIRMED --> SCROLL
-    SKIP_AD --> SCROLL
-    SKIP_BTN --> SCROLL
-    SKIP_LIKED --> SCROLL
-    SKIP_KEY --> SCROLL
-
-    SCROLL["Sau vòng duyệt: window.scrollBy(top: step, behavior: instant) & tăng steps"] --> SAVE_TICK["Cập nhật panel Shadow DOM & gửi SF_SAVE"]
-    SAVE_TICK --> NEXT{"Phiên vẫn đang chạy (running = true)?"}
-    NEXT -->|"Có (kể cả khi hết giới hạn like)"| WAIT(["Hẹn timer lượt tiếp theo"])
-    NEXT -->|"Đã bấm Dừng"| STOPPED(["Kết thúc vòng lặp"])
-```
+> Nguồn sơ đồ tương tác (HTML + inline SVG): [`docs/diagrams/session-tick-lifecycle.html`](docs/diagrams/session-tick-lifecycle.html)
 
 ---
 
